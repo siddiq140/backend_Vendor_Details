@@ -1,90 +1,89 @@
-const Product = require('../models/Product');
-const multer = require('multer');
+const Product = require("../models/Product");
+const multer = require("multer");
+const Firm = require('../models/Firm')
 const path = require('path');
-const Firm = require('../models/Firm');
+
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/'); // Set destination folder
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // Set filename with timestamp and original extension
-  },
+    destination: function(req, file, cb) {
+        cb(null, 'uploads/'); // Destination folder where the uploaded images will be stored
+    },
+    filename: function(req, file, cb) {
+        cb(null, Date.now() + path.extname(file.originalname)); // Generating a unique filename
+    }
 });
 
 const upload = multer({ storage: storage });
 
-const addProduct = async (req, res) => {
-  try {
-      const { productName, price, category, bestSeller, description } = req.body;
-      const firmId = req.params.firmId;
-      
-      console.log("Firm ID Received:", firmId);
+const addProduct = async(req, res) => {
+    try {
+        const { productName, price, category, bestSeller, description } = req.body;
+        const image = req.file ? req.file.filename : undefined;
 
-      const firm = await Firm.findById(firmId);
-      if (!firm) {
-          return res.status(404).json({ message: "Firm not found" });
-      }
+        const firmId = req.params.firmId;
+        const firm = await Firm.findById(firmId);
 
-      const image = req.file ? req.file.filename : undefined;
+        if (!firm) {
+            return res.status(404).json({ error: "No firm found" });
+        }
 
-      const product = new Product({
-          productName,
-          price,
-          category,
-          bestSeller,
-          description,
-          image,
-          firm: firm._id
-      });
+        const product = new Product({
+            productName,
+            price,
+            category,
+            bestSeller,
+            description,
+            image,
+            firm: firm._id
+        })
 
-      const savedProduct = await product.save();
-      console.log("Product Saved:", savedProduct);
-
-      // ✅ Update the Firm's products array
-      firm.products.push(savedProduct._id);
-      await firm.save();
-
-      res.status(201).json(savedProduct);
-  } catch (error) {
-      console.error("Error Saving Product:", error);
-      res.status(500).json({ message: "Internal Server Error", error: error.message });
-  }
-};
+        const savedProduct = await product.save();
+        firm.products.push(savedProduct);
 
 
-const getProductByFirm = async (req, res) => {
-  try {
-    const firmId = req.params.firmId;
-    console.log("Fetching Products for Firm ID:", firmId);
+        await firm.save()
 
-    const firm = await Firm.findById(firmId).populate('products'); // ✅ Populate products
-    if (!firm) {
-      return res.status(404).json({ message: "Firm not found" });
+        res.status(200).json(savedProduct)
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal server error" })
     }
+}
 
-    const restaurantName = firm.firmName;
-    const products = await Product.find({ firm: firmId });
-    res.status(200).json({ restaurantName, products });
-    
-  } catch (error) {
-    console.error("Error Fetching Products:", error);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
-};
+const getProductByFirm = async(req, res) => {
+    try {
+        const firmId = req.params.firmId;
+        const firm = await Firm.findById(firmId);
 
- const deleteProductById = async (req, res) => {
-  try {
-    const productId = req.params.productId;
-    const deleteProduct = await Product.findByIdAndDelete(productId);
-    if (!deleteProduct) {
-      return res.status(404).json({ message: "Product not found" });
+        if (!firm) {
+            return res.status(404).json({ error: "No firm found" });
+        }
+
+        const restaurantName = firm.firmName;
+        const products = await Product.find({ firm: firmId });
+
+        res.status(200).json({ restaurantName, products });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal server error" })
     }
-    res.status(200).json({ message: "Product deleted successfully" });
-  } catch (error) {
-    console.error("Error Deleting Product:", error);
-    res.status(500).json({ message: "Internal Server Error" });
-  }}
+}
 
+const deleteProductById = async(req, res) => {
+    try {
+        const productId = req.params.productId;
+
+        const deletedProduct = await Product.findByIdAndDelete(productId);
+
+        if (!deletedProduct) {
+            return res.status(404).json({ error: "No product found" })
+        }
+        res.status(200).json({ message: "Product deleted successfully" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal server error" })
+    }
+}
 
 module.exports = { addProduct: [upload.single('image'), addProduct], getProductByFirm, deleteProductById };

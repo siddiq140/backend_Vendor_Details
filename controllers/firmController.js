@@ -1,66 +1,78 @@
 const Firm = require('../models/Firm');
 const Vendor = require('../models/Vendor');
 const multer = require('multer');
-const path = require('path'); // Add path module
+const path = require('path');
 
-// Set up storage engine for multer
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/'); // Set destination folder
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // Set filename with timestamp and original extension
-  },
+    destination: function(req, file, cb) {
+        cb(null, 'uploads/'); // Destination folder where the uploaded images will be stored
+    },
+    filename: function(req, file, cb) {
+        cb(null, Date.now() + path.extname(file.originalname)); // Generating a unique filename
+    }
 });
 
-// Initialize multer with storage configuration
-const upload = multer({ storage: storage }); // Define the upload variable using multer
+const upload = multer({ storage: storage });
 
-// Add Firm function
-const addFirm = async (req, res) => {
-  try {
-    const { firmName, area, category, region, offer } = req.body; // Extract data from the body
+const addFirm = async(req, res) => {
+    try {
+        const { firmName, area, category, region, offer } = req.body;
 
-    const image = req.file ? req.file.filename : undefined; // Get image filename if available
+        const image = req.file ? req.file.filename : undefined;
 
-    // Assuming vendorId is in the request object
-    const vendor = await Vendor.findById(req.vendorId); // Get vendor by ID from req.vendorId
-    if (!vendor) {
-      return res.status(404).json({ message: "Vendor not found" }); // Return response if vendor not found
+        const vendor = await Vendor.findById(req.vendorId);
+        if (!vendor) {
+            res.status(404).json({ message: "Vendor not found" })
+        }
+
+        if (vendor.firm.length > 0) {
+            return res.status(400).json({ message: "vendor can have only one firm" });
+        }
+
+        const firm = new Firm({
+            firmName,
+            area,
+            category,
+            region,
+            offer,
+            image,
+            vendor: vendor._id
+        })
+
+        const savedFirm = await firm.save();
+
+        const firmId = savedFirm._id
+        const vendorFirmName = savedFirm.firmName
+
+        vendor.firm.push(savedFirm)
+
+        await vendor.save()
+
+
+
+        return res.status(200).json({ message: 'Firm Added successfully ', firmId, vendorFirmName });
+
+
+    } catch (error) {
+        console.error(error)
+        res.status(500).json("intenal server error")
     }
+}
 
-    const firm = new Firm({
-      firmName,
-      area,
-      category,
-      region,
-      offer,
-      image,
-      vendor: vendor._id, // Use vendor ID
-    });
+const deleteFirmById = async(req, res) => {
+    try {
+        const firmId = req.params.firmId;
 
-    const savedFirm = await firm.save(); // Save the firm to the database
-    vendor.firm.push(savedFirm)
-    await vendor.save()
+        const deletedProduct = await Firm.findByIdAndDelete(firmId);
 
-    res.status(200).json({ message: "Firm added successfully" }); // Success response
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Internal Server Error" }); // Error response
-  }
-};
-const deleteFirmById = async (req, res) => {
-  try {
-    const firmId = req.params.firmId;
-    const deleteProduct = await Firm.findByIdAndDelete(firmId);
-    if (!deleteProduct) {
-      return res.status(404).json({ message: "Product not found" });
+        if (!deletedProduct) {
+            return res.status(404).json({ error: "No product found" })
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal server error" })
     }
-    res.status(200).json({ message: "Product deleted successfully" });
-  } catch (error) {
-    console.error("Error Deleting Product:", error);
-    res.status(500).json({ message: "Internal Server Error" });
-  }}
+}
 
-// Export addFirm function with multer middleware for handling image uploads
-module.exports = { addFirm: [upload.single('image'), addFirm],deleteFirmById }; // multer middleware to handle image upload
+module.exports = { addFirm: [upload.single('image'), addFirm], deleteFirmById }
